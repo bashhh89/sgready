@@ -1,0 +1,5 @@
+ignoredBuiltDependencies:
+  - '@firebase/util'
+  - protobufjs
+  - puppeteer
+  - unrs-resolver
