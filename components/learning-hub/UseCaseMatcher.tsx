@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface MatchResult {
   modelName: string;
@@ -13,41 +13,31 @@ interface UseCaseMatcherProps {
 export default function UseCaseMatcher({ tasks }: UseCaseMatcherProps) {
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [results, setResults] = useState<MatchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleTaskSelect = (taskId: string) => {
+  const handleTaskSelect = async (taskId: string) => {
     setSelectedTask(taskId);
+    setIsLoading(true);
+    setError(null);
     
-    // This would be replaced with actual logic in a real implementation
-    // For now, just showing mock results based on the selected task
-    const mockResults: Record<string, MatchResult[]> = {
-      'long-form-content': [
-        { modelName: 'GPT-4 Turbo', score: 9.2, rationale: 'Excellent at generating coherent, nuanced long-form content with logical flow.' },
-        { modelName: 'Claude 3 Opus', score: 9.1, rationale: 'Great for long-form with exceptional context window and document understanding.' },
-        { modelName: 'Llama 3', score: 8.5, rationale: 'Strong performer that balances quality and cost-effectiveness.' }
-      ],
-      'marketing-copy': [
-        { modelName: 'GPT-4 Turbo', score: 9.3, rationale: 'Excels at generating persuasive, on-brand marketing copy with good tone control.' },
-        { modelName: 'Claude 3 Sonnet', score: 8.9, rationale: 'Good balance of quality and cost for marketing copy needs.' },
-        { modelName: 'Gemini Pro', score: 8.7, rationale: 'Strong marketing capabilities with good understanding of audience targeting.' }
-      ],
-      'image-generation': [
-        { modelName: 'Midjourney', score: 9.4, rationale: 'Best for artistic, distinctive marketing visuals with strong aesthetic appeal.' },
-        { modelName: 'DALL-E 3', score: 9.0, rationale: 'Excellent for illustrations and conceptual images with good prompt understanding.' },
-        { modelName: 'Stable Diffusion XL', score: 8.8, rationale: 'Great flexibility and control over image generation, strong for branding work.' }
-      ],
-      'video-creation': [
-        { modelName: 'Sora', score: 8.8, rationale: 'Best for realistic, coherent short video clips for marketing purposes.' },
-        { modelName: 'Runway Gen-2', score: 8.5, rationale: 'Good for short product demonstrations and visual effects.' },
-        { modelName: 'Pika Labs', score: 8.3, rationale: 'Excellent for quick, attention-grabbing social media video content.' }
-      ],
-      'data-analysis': [
-        { modelName: 'Specialized Analytics Tools', score: 9.5, rationale: 'Purpose-built analytics platforms outperform general AI for marketing data.' },
-        { modelName: 'GPT-4 Turbo with Data Analysis', score: 8.0, rationale: 'Can perform basic analysis when given structured data and clear instructions.' },
-        { modelName: 'Claude 3 Opus', score: 7.8, rationale: 'Good for extracting insights from marketing reports and unstructured data.' }
-      ]
-    };
-    
-    setResults(mockResults[taskId] || []);
+    try {
+      // Real API call to get model recommendations
+      const response = await fetch(`/api/learning-hub/model-recommendations?taskId=${encodeURIComponent(taskId)}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch model recommendations');
+      }
+      
+      const data = await response.json();
+      setResults(data.recommendations || []);
+    } catch (err) {
+      console.error('Error fetching model recommendations:', err);
+      setError('Unable to load recommendations. Please try again later.');
+      setResults([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -71,7 +61,20 @@ export default function UseCaseMatcher({ tasks }: UseCaseMatcherProps) {
         ))}
       </div>
       
-      {selectedTask && results.length > 0 && (
+      {isLoading && (
+        <div className="text-center py-8">
+          <div className="inline-block w-6 h-6 border-2 border-sg-bright-green/30 border-t-sg-bright-green rounded-full animate-spin"></div>
+          <p className="text-sg-dark-teal/70 mt-2">Loading recommendations...</p>
+        </div>
+      )}
+      
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+          <p className="text-red-700">{error}</p>
+        </div>
+      )}
+      
+      {selectedTask && results.length > 0 && !isLoading && (
         <div className="space-y-4 mt-6">
           <h4 className="font-semibold text-sg-dark-teal">Recommended Models:</h4>
           {results.map((result, index) => (
@@ -85,6 +88,12 @@ export default function UseCaseMatcher({ tasks }: UseCaseMatcherProps) {
               <p className="text-sm text-sg-dark-teal/70 mt-1">{result.rationale}</p>
             </div>
           ))}
+        </div>
+      )}
+      
+      {selectedTask && results.length === 0 && !isLoading && !error && (
+        <div className="text-center py-8">
+          <p className="text-sg-dark-teal/70">No recommendations available for this task yet.</p>
         </div>
       )}
     </div>

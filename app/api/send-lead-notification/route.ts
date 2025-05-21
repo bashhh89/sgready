@@ -115,8 +115,7 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json({
-        message: 'Lead captured successfully (email notification disabled)',
-        mock: true
+        message: 'Lead captured successfully (email notification disabled)'
       });
     }
   } catch (error) {

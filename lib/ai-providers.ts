@@ -13,173 +13,91 @@ export class OpenAIProvider implements AIProvider {
   model: string;
   
   constructor(apiKey?: string, model?: string) {
-    // Enhanced key handling with detailed logging
     const envKey = process.env.OPENAI_API_KEY;
-    console.log('OpenAI Provider Constructor:');
-    console.log('- Passed API Key exists:', !!apiKey);
-    console.log('- Env OPENAI_API_KEY exists:', !!envKey);
-    console.log('- Key being used (first 8 chars):', (apiKey || envKey || '').substring(0, 8));
-    
     this.apiKey = apiKey || envKey || '';
     this.model = model || process.env.OPENAI_MODEL || 'gpt-4o';
-    console.log(`Initializing OpenAI provider with model: ${this.model}`);
-    
+    console.log(`Initializing OpenAI provider with model: ${this.model}. API Key present: ${!!this.apiKey}`);
     if (!this.apiKey) {
-      console.error('CRITICAL: OpenAI provider initialized without API key!');
-      console.error('- USE_GEORGE_KEY:', process.env.USE_GEORGE_KEY);
-      console.error('- OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
-      throw new Error('OpenAI provider requires an API key');
+      // This will be caught by isAvailable or when a call is made
+      console.warn('OpenAI provider initialized without API key. It will not be available.');
     }
   }
   
   async isAvailable(): Promise<boolean> {
     if (!this.apiKey) {
-      console.error('OpenAI availability check failed: No API key provided');
-      console.error('Current state:');
-      console.error('- API Key exists:', !!this.apiKey);
-      console.error('- Env OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
-      console.error('- USE_GEORGE_KEY:', process.env.USE_GEORGE_KEY);
+      console.error('OpenAI availability check failed: No API key provided.');
       return false;
     }
-    
     try {
-      console.log('Attempting to use OpenAI provider...');
-      console.log('- Using API key (first 8 chars):', this.apiKey.substring(0, 8));
-      
-      // Simple test call to check if API key is valid
       const response = await fetch('https://api.openai.com/v1/models', {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
+        headers: { 'Authorization': `Bearer ${this.apiKey}` }
       });
-      
-      if (response.status !== 200) {
+      if (!response.ok) {
         const errorData = await response.text();
-        console.error(`OpenAI provider failed. Status Code: ${response.status}. Response Snippet: ${errorData.substring(0, 300)}...`);
+        console.error(`OpenAI provider availability check failed. Status: ${response.status}. Response: ${errorData.substring(0,300)}`);
         return false;
       }
-      
-      console.log('OpenAI provider is available and working correctly');
+      console.log('OpenAI provider is available.');
       return true;
-    } catch (error) {
-      console.error('OpenAI availability check failed with exception:', error);
+    } catch (error: any) {
+      console.error('OpenAI availability check failed with exception:', error.message);
       return false;
     }
   }
   
   async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 4000
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error(`OpenAI API error: ${response.status}. Response Snippet: ${errorData.substring(0, 300)}...`);
-        throw new Error(`OpenAI API error: ${response.status} ${errorData}`);
-      }
-      
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } catch (error) {
-      console.error('Error generating report with OpenAI:', error);
-      throw error;
+    if (!this.apiKey) throw new Error('OpenAI API key not configured.');
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.apiKey}` },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.7, max_tokens: 4000
+      })
+    });
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`OpenAI API error for generateReport: ${response.status}. Details: ${errorData.substring(0,500)}`);
+      throw new Error(`OpenAI API error: ${response.status} ${errorData}`);
     }
+    const data = await response.json();
+    return data.choices[0].message.content;
   }
   
   async generateNextQuestion(systemPrompt: string, userPrompt: string): Promise<any> {
+    if (!this.apiKey) throw new Error('OpenAI API key not configured.');
+    console.log('OpenAI: Generating next question...');
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.apiKey}` },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.7, max_tokens: 1500, response_format: { type: "json_object" }
+      })
+    });
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`OpenAI API error for generateNextQuestion: ${response.status}. Details: ${errorData.substring(0,500)}`);
+      throw new Error(`OpenAI API error: ${response.status} ${errorData}`);
+    }
+    const data = await response.json();
     try {
-      console.log('OpenAI: Generating next question with system prompt:', systemPrompt.substring(0, 100) + '...');
-      console.log('OpenAI: User prompt:', userPrompt.substring(0, 100) + '...');
-      
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1500,
-          response_format: { type: "json_object" }
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error(`OpenAI API error: ${response.status}. Response Snippet: ${errorData.substring(0, 300)}...`);
-        throw new Error(`OpenAI API error: ${response.status} ${errorData}`);
-      }
-      
-      const data = await response.json();
-      console.log('OpenAI: Received response data structure:', JSON.stringify(data).substring(0, 100) + '...');
-      
-      try {
-        // Check if the response is already in the expected format
-        if (data && data.choices && data.choices[0] && data.choices[0].message) {
-          const content = data.choices[0].message.content;
-          
-          // If content is already parsed JSON (not a string), return it directly
-          if (typeof content !== 'string') {
-            return content;
-          }
-          
-          // Check if content looks like HTML (common error case)
-          if (content.startsWith('<!DOCTYPE') || content.startsWith('<html')) {
-            console.error('OpenAI returned HTML instead of JSON:', content.substring(0, 100));
-            throw new Error('Invalid response format: received HTML instead of JSON');
-          }
-          
-          // If it's a string, try to parse it as JSON
-          try {
-            const parsedContent = JSON.parse(content);
-            return parsedContent;
-          } catch (parseError: any) {
-            console.error('Error parsing JSON response from OpenAI:', parseError);
-            console.error('Response content:', content);
-            throw new Error(`Invalid JSON response from OpenAI API: ${parseError.message}`);
-          }
-        } else {
-          console.error('Unexpected response structure from OpenAI:', data);
-          throw new Error('Unexpected response structure from OpenAI API');
+      if (data && data.choices && data.choices[0] && data.choices[0].message) {
+        const content = data.choices[0].message.content;
+        if (typeof content !== 'string') return content;
+        if (content.startsWith('<!DOCTYPE') || content.startsWith('<html')) {
+          console.error('OpenAI returned HTML instead of JSON for question:', content.substring(0, 100));
+          throw new Error('Invalid response format: received HTML instead of JSON from OpenAI');
         }
-      } catch (parseError: any) {
-        console.error('Error processing response from OpenAI:', parseError);
-        throw parseError;
+        return JSON.parse(content);
       }
-    } catch (error) {
-      console.error('Error generating next question with OpenAI:', error);
-      throw error;
+      console.error('Unexpected response structure from OpenAI (question):', data);
+      throw new Error('Unexpected response structure from OpenAI API (question)');
+    } catch (parseError: any) {
+      console.error('Error processing/parsing OpenAI question response:', parseError);
+      throw parseError;
     }
   }
 }
@@ -188,135 +106,91 @@ export class OpenAIProvider implements AIProvider {
 export class PollinationsProvider implements AIProvider {
   name = 'Pollinations';
   apiUrl: string;
+  model: string;
   
-  constructor(apiUrl?: string) {
+  constructor(apiUrl?: string, model?: string) {
     this.apiUrl = apiUrl || 'https://text.pollinations.ai/openai';
+    this.model = model || 'openai-large'; // Default as per previous setup
+    console.log(`Initializing Pollinations provider with model: ${this.model} and API URL: ${this.apiUrl}`);
   }
   
   async isAvailable(): Promise<boolean> {
     try {
-      // Simple ping to check if the service is available
       const response = await fetch(this.apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "openai-large",
-          messages: [
-            { role: "user", content: "ping" }
-          ],
-          max_tokens: 5
-        })
+        body: JSON.stringify({ model: this.model, messages: [{ role: "user", content: "ping" }], max_tokens: 5 })
       });
-      
-      return response.status === 200;
-    } catch (error) {
-      console.error('Pollinations availability check failed:', error);
+      if (!response.ok) {
+        console.error(`Pollinations provider availability check failed. Status: ${response.status}`);
+        return false;
+      }
+      console.log('Pollinations provider is available.');
+      return true;
+    } catch (error: any) {
+      console.error('Pollinations availability check failed with exception:', error.message);
       return false;
     }
   }
-  
-  async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
-    try {
-      const response = await fetch(this.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "openai-large",
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 4000,
-          response_format: { type: "json_object" }
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Pollinations API error: ${response.status} ${errorData}`);
-      }
-      
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } catch (error) {
-      console.error('Error generating report with Pollinations:', error);
-      throw error;
+
+  private async _generate(systemPrompt: string, userPrompt: string, max_tokens: number): Promise<any> {
+    const response = await fetch(this.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.7, max_tokens, response_format: { type: "json_object" }
+      })
+    });
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`Pollinations API error: ${response.status}. Details: ${errorData.substring(0,500)}`);
+      throw new Error(`Pollinations API error: ${response.status} ${errorData}`);
     }
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message) {
+      const content = data.choices[0].message.content;
+      if (typeof content !== 'string') return content; // Already object
+      if (content.startsWith('<!DOCTYPE') || content.startsWith('<html')) {
+        console.error('Pollinations returned HTML instead of JSON:', content.substring(0, 100));
+        throw new Error('Invalid response format: received HTML instead of JSON from Pollinations');
+      }
+      return JSON.parse(content);
+    }
+    console.error('Unexpected response structure from Pollinations:', data);
+    throw new Error('Unexpected response structure from Pollinations API');
+  }
+
+  async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
+    console.log('Pollinations: Generating report...');
+    // Assuming report is string content, not JSON object from Pollinations for this example
+    // If report is also JSON, _generate can be used and then extract string part
+     const response = await fetch(this.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.7, max_tokens: 4000 
+      })
+    });
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`Pollinations API error for generateReport: ${response.status}. Details: ${errorData.substring(0,500)}`);
+      throw new Error(`Pollinations API error: ${response.status} ${errorData}`);
+    }
+    const data = await response.json();
+    if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+        return data.choices[0].message.content;
+    }
+    console.error('Unexpected response structure for report from Pollinations:', data);
+    throw new Error('Unexpected report response structure from Pollinations API');
   }
   
   async generateNextQuestion(systemPrompt: string, userPrompt: string): Promise<any> {
-    try {
-      const response = await fetch(this.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "openai-large",
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1500,
-          response_format: { type: "json_object" }
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Pollinations API error: ${response.status} ${errorData}`);
-      }
-      
-      try {
-        const data = await response.json();
-        
-        // First check if the response is in the expected format
-        if (data && data.choices && data.choices[0] && data.choices[0].message) {
-          const content = data.choices[0].message.content;
-          
-          // Check if content is already an object (not a string)
-          if (typeof content !== 'string') {
-            return content;
-          }
-          
-          // Check if content looks like HTML (common error case)
-          if (content.startsWith('<!DOCTYPE') || content.startsWith('<html')) {
-            console.error('Pollinations returned HTML instead of JSON:', content.substring(0, 100));
-            throw new Error('Invalid response format: received HTML instead of JSON');
-          }
-          
-          // If it's a string, try to parse it as JSON
-          try {
-            return JSON.parse(content);
-          } catch (parseError: any) {
-            console.error('Error parsing JSON response from Pollinations:', parseError);
-            console.error('Response content:', content);
-            throw new Error(`Invalid JSON response from Pollinations API: ${parseError.message}`);
-          }
-        } else {
-          console.error('Unexpected response structure from Pollinations:', data);
-          throw new Error('Unexpected response structure from Pollinations API');
-        }
-      } catch (parseError: any) {
-        console.error('Error processing response from Pollinations:', parseError);
-        throw parseError;
-      }
-    } catch (error) {
-      console.error('Error generating next question with Pollinations:', error);
-      throw error;
-    }
+    console.log('Pollinations: Generating next question...');
+    return this._generate(systemPrompt, userPrompt, 1500);
   }
 }
 
@@ -326,315 +200,430 @@ export class GroqProvider implements AIProvider {
   apiKey: string;
   model: string;
   
-  constructor(apiKey?: string) {
+  constructor(apiKey?: string, model?: string) {
     this.apiKey = apiKey || process.env.GROQ_API_KEY || '';
-    this.model = process.env.DEV_AI_MODEL || 'llama3-70b-8192';
-    console.log(`Initializing Groq provider with model: ${this.model}`);
+    this.model = model || process.env.DEV_AI_MODEL || 'qwen-qwq-32b'; // Default qwen-qwq-32b
+    console.log(`Initializing Groq provider with model: ${this.model}. API Key present: ${!!this.apiKey}`);
+    if (!this.apiKey) {
+      console.warn('Groq provider initialized without API key. It will not be available.');
+    }
   }
   
   async isAvailable(): Promise<boolean> {
-    if (!this.apiKey) return false;
-    
-    try {
-      // Simple test call to check if API key is valid
-      const response = await fetch('https://api.groq.com/v1/models', {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        }
-      });
-      
-      return response.status === 200;
-    } catch (error) {
-      console.error('Groq availability check failed:', error);
+    if (!this.apiKey) {
+      console.error('Groq availability check failed: No API key provided.');
       return false;
+    }
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/models', { // Corrected URL
+        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+      });
+       if (!response.ok) {
+        const errorData = await response.text();
+        console.error(`Groq provider availability check failed. Status: ${response.status}. Response: ${errorData.substring(0,300)}`);
+        return false;
+      }
+      console.log('Groq provider is available.');
+      return true;
+    } catch (error: any) {
+      console.error('Groq availability check failed with exception:', error.message);
+      return false;
+    }
+  }
+
+  private async _generate(systemPrompt: string, userPrompt: string, max_tokens: number, isJsonOutput: boolean): Promise<any> {
+    if (!this.apiKey) throw new Error('Groq API key not configured.');
+    const body: any = {
+        model: this.model,
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+        temperature: 0.7,
+        max_tokens
+    };
+    if (isJsonOutput) {
+        body.response_format = { type: "json_object" };
+    }
+
+    const response = await fetch('https://api.groq.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.apiKey}` },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`Groq API error: ${response.status}. Details: ${errorData.substring(0,500)}`);
+      throw new Error(`Groq API error: ${response.status} ${errorData}`);
+    }
+    const data = await response.json();
+    
+    if (isJsonOutput) {
+        try {
+            if (data && data.choices && data.choices[0] && data.choices[0].message) {
+              const content = data.choices[0].message.content;
+              if (typeof content !== 'string') return content; // Already object
+              if (content.startsWith('<!DOCTYPE') || content.startsWith('<html')) {
+                console.error('Groq returned HTML instead of JSON:', content.substring(0, 100));
+                throw new Error('Invalid response format: received HTML instead of JSON from Groq');
+              }
+              return JSON.parse(content);
+            }
+            console.error('Unexpected response structure from Groq (JSON mode):', data);
+            throw new Error('Unexpected response structure from Groq API (JSON mode)');
+        } catch (parseError: any) {
+            console.error('Error processing/parsing Groq JSON response:', parseError);
+            throw parseError;
+        }
+    } else {
+        // For text output like generateReport
+        if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+            return data.choices[0].message.content;
+        }
+        console.error('Unexpected response structure for text report from Groq:', data);
+        throw new Error('Unexpected text report response structure from Groq API');
     }
   }
   
   async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
-    try {
-      const response = await fetch('https://api.groq.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 4000,
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Groq API error: ${response.status} ${errorData}`);
-      }
-      
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } catch (error) {
-      console.error('Error generating report with Groq:', error);
-      throw error;
-    }
+    console.log('Groq: Generating report...');
+    return this._generate(systemPrompt, userPrompt, 4000, false) as Promise<string>;
   }
   
   async generateNextQuestion(systemPrompt: string, userPrompt: string): Promise<any> {
+    console.log('Groq: Generating next question...');
+    return this._generate(systemPrompt, userPrompt, 1500, true);
+  }
+}
+
+// Google Gemini Provider
+export class GoogleProvider implements AIProvider {
+  name = 'Google';
+  apiKey: string;
+  model: string;
+  baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+  constructor(apiKey?: string, model?: string) {
+    this.apiKey = apiKey || process.env.GOOGLE_API_KEY || '';
+    this.model = model || 'gemini-2.0-flash'; // Changed to gemini-2.0-flash
+    console.log(`Initializing Google Gemini provider with model: ${this.model}. API Key present: ${!!this.apiKey}`);
+    if (!this.apiKey) {
+      console.warn('Google Gemini provider initialized without API key. It will not be available.');
+    }
+  }
+
+  async isAvailable(): Promise<boolean> {
+    if (!this.apiKey) {
+      console.error('Google Gemini availability check failed: No API key provided.');
+      return false;
+    }
     try {
-      console.log('Groq: Generating next question with system prompt:', systemPrompt.substring(0, 100) + '...');
-      console.log('Groq: User prompt:', userPrompt.substring(0, 100) + '...');
-      
-      const response = await fetch('https://api.groq.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1500,
-          response_format: { type: "json_object" }
-        })
-      });
-      
+      // Simple check by trying to get model info. Gemini API lists models at /models or /models/{model_id}
+      const response = await fetch(`${this.baseUrl}/${this.model}?key=${this.apiKey}`);
       if (!response.ok) {
         const errorData = await response.text();
-        throw new Error(`Groq API error: ${response.status} ${errorData}`);
+        console.error(`Google Gemini provider availability check failed. Status: ${response.status}. Response: ${errorData.substring(0,300)}`);
+        return false;
       }
-      
-      const data = await response.json();
-      console.log('Groq: Received response data structure:', JSON.stringify(data).substring(0, 100) + '...');
-      
-      try {
-        // Check if the response is already in the expected format
-        if (data && data.choices && data.choices[0] && data.choices[0].message) {
-          const content = data.choices[0].message.content;
-          
-          // If content is already parsed JSON (not a string), return it directly
-          if (typeof content !== 'string') {
-            return content;
-          }
-          
-          // Check if content looks like HTML (common error case)
-          if (content.startsWith('<!DOCTYPE') || content.startsWith('<html')) {
-            console.error('Groq returned HTML instead of JSON:', content.substring(0, 100));
-            throw new Error('Invalid response format: received HTML instead of JSON');
-          }
-          
-          // If it's a string, try to parse it as JSON
-          try {
-            const parsedContent = JSON.parse(content);
-            return parsedContent;
-          } catch (parseError: any) {
-            console.error('Error parsing JSON response from Groq:', parseError);
-            console.error('Response content:', content);
-            throw new Error(`Invalid JSON response from Groq API: ${parseError.message}`);
-          }
-        } else {
-          console.error('Unexpected response structure from Groq:', data);
-          throw new Error('Unexpected response structure from Groq API');
-        }
-      } catch (parseError: any) {
-        console.error('Error processing response from Groq:', parseError);
-        throw parseError;
-      }
-    } catch (error) {
-      console.error('Error generating next question with Groq:', error);
-      throw error;
+      console.log('Google Gemini provider is available.');
+      return true;
+    } catch (error: any) {
+      console.error('Google Gemini availability check failed with exception:', error.message);
+      return false;
     }
+  }
+
+  private async _generateContent(systemPrompt: string, userPrompt: string, maxOutputTokens: number, expectJson: boolean): Promise<any> {
+    if (!this.apiKey) throw new Error('Google Gemini API key not configured.');
+
+    const requestUrl = `${this.baseUrl}/${this.model}:generateContent?key=${this.apiKey}`;
+    const body = {
+      // Gemini API structure: contents array, with parts array for text
+      // System prompt can be part of the first message or a separate instruction
+      contents: [
+        { role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] } 
+      ],
+      generationConfig: {
+        // Not directly 'temperature' and 'max_tokens' like OpenAI.
+        // 'temperature' is available. 'maxOutputTokens' is the equivalent for token limit.
+        temperature: 0.7,
+        maxOutputTokens: maxOutputTokens,
+        // For JSON output, Gemini typically infers from prompt or can be guided by specific model versions.
+        // If a direct "response_mime_type": "application/json" is supported for the model, it would be here.
+        // For gemini-1.5-flash, it's good at following instructions for JSON in the prompt.
+        // If `expectJson` is true, ensure the systemPrompt instructs JSON output.
+      }
+    };
+
+    if (expectJson) {
+        // For Gemini, ensure the system prompt explicitly asks for JSON output.
+        // Example: "You must respond in JSON format: { \"questionText\": ..., ... }"
+        // Some newer Gemini models might support a response_mime_type in generationConfig.
+        // For now, relying on prompt engineering for JSON.
+        if (!systemPrompt.toLowerCase().includes('json')) {
+            console.warn("GoogleProvider: expectJson is true, but systemPrompt might not be instructing JSON output effectively.");
+        }
+    }
+
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`Google Gemini API error: ${response.status}. Details: ${errorData.substring(0,500)}`);
+      throw new Error(`Google Gemini API error: ${response.status} ${errorData}`);
+    }
+    const data = await response.json();
+
+    // Gemini response structure: data.candidates[0].content.parts[0].text
+    if (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+      const textContent = data.candidates[0].content.parts[0].text;
+      if (expectJson) {
+        let cleanedJson = ""; // Declare here
+        try {
+          // Gemini might wrap JSON in markdown ```json ... ``` or just ``` ... ```
+          cleanedJson = textContent.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+          return JSON.parse(cleanedJson);
+        } catch (parseError: any) {
+          console.error('Error parsing Google Gemini JSON response. Raw text:', textContent.substring(0, 500));
+          console.error('Parse error:', parseError);
+          // Fallback: attempt to extract JSON from within the string if it's embedded
+          // Note: cleanedJson from the try block might be an empty string if textContent was only ```json``` etc.
+          // So, it's better to use the original textContent for fallback search if cleanedJson is empty or fails.
+          const stringToSearchForJson = cleanedJson.length > 0 ? cleanedJson : textContent;
+          try {
+            const jsonMatch = stringToSearchForJson.match(/\{([\s\S]*)\}/); // Try to find a JSON object within, mimic dotAll
+            if (jsonMatch && jsonMatch[0]) {
+              console.log("Attempting to parse extracted JSON from fallback match...");
+              return JSON.parse(jsonMatch[0]);
+            }
+          } catch (fallbackParseError: any) {
+            console.error('Fallback JSON parsing also failed:', fallbackParseError);
+            throw new Error('Failed to parse JSON response from Google Gemini (initial and fallback): ' + parseError.message + ". Raw text: " + textContent.substring(0, 200));
+          }
+          throw new Error('Failed to parse JSON response from Google Gemini: ' + parseError.message + ". Raw text: " + textContent.substring(0, 200));
+        }
+      }
+      return textContent; // For text report
+    }
+    console.error('Unexpected response structure from Google Gemini:', data);
+    throw new Error('Unexpected response structure from Google Gemini API');
+  }
+
+  async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
+    console.log('Google Gemini: Generating report...');
+    // Ensure systemPrompt does NOT ask for JSON for reports.
+    return this._generateContent(systemPrompt, userPrompt, 4000, false) as Promise<string>;
+  }
+
+  async generateNextQuestion(systemPrompt: string, userPrompt: string): Promise<any> {
+    console.log('Google Gemini: Generating next question...');
+    // Ensure systemPrompt for questions DOES ask for JSON.
+    // Increased maxOutputTokens from 1500 to 2048
+    return this._generateContent(systemPrompt, userPrompt, 2048, true);
   }
 }
 
 // AI Provider Manager
 export class AIProviderManager {
-  providers: AIProvider[];
-  currentProviderIndex: number = 0;
-  
-  constructor(providers: AIProvider[] = []) {
-    this.providers = providers;
+  private googleProvider: GoogleProvider | undefined;
+  private openAIProvider: OpenAIProvider | undefined;
+  private groqProvider: GroqProvider | undefined;
+  private pollinationsProvider: PollinationsProvider | undefined; // Keep for other potential uses
+  private lastReportProviderName: string | undefined;
+  private lastQuestionProviderName: string | undefined;
+
+
+  constructor() {
+    console.log('Initializing AI Provider Manager (Google Primary)...');
     
-    // If no providers specified, initialize with defaults based on environment variables
-    if (providers.length === 0) {
-      console.log('Initializing AI providers based on environment configuration...');
-      
-      // Always use George's key in production
-      const useGeorgeKey = process.env.USE_GEORGE_KEY !== 'false'; // Default to true unless explicitly set to false
-      console.log(`Using ${useGeorgeKey ? 'PRODUCTION' : 'DEVELOPMENT'} configuration`);
-      console.log('Environment Variables Check:');
-      console.log('- USE_GEORGE_KEY:', process.env.USE_GEORGE_KEY);
-      console.log('- OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
-      console.log('- OPENAI_API_KEY prefix:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 8) : 'NOT_FOUND');
-      
-      if (useGeorgeKey) {
-        // Production setup - Use OpenAI as primary with fallbacks
-        console.log('Setting up PRODUCTION providers: OpenAI primary with Groq and Pollinations fallbacks');
-        
-        // Log OpenAI configuration
-        const openaiKey = process.env.OPENAI_API_KEY;
-        const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o';
-        
-        if (!openaiKey) {
-          console.error('CRITICAL ERROR: OpenAI API key not found in environment variables!');
-          console.error('Current environment state:');
-          console.error('- USE_GEORGE_KEY:', process.env.USE_GEORGE_KEY);
-          console.error('- NODE_ENV:', process.env.NODE_ENV);
-          throw new Error('OpenAI API key not found when USE_GEORGE_KEY is true');
-        }
-        
-        // Initialize OpenAI as primary provider
-        try {
-          console.log('Attempting to initialize OpenAI provider...');
-          const openaiProvider = new OpenAIProvider(openaiKey, openaiModel);
-          this.providers.push(openaiProvider);
-          console.log('Successfully initialized OpenAI provider');
-        } catch (error) {
-          console.error('Failed to initialize OpenAI provider:', error);
-          throw error; // Re-throw to prevent partial initialization
-        }
-        
-        // Add Groq as first fallback if available
-        if (process.env.GROQ_API_KEY) {
-          console.log('Adding Groq as fallback');
-          this.providers.push(new GroqProvider(process.env.GROQ_API_KEY));
-        }
-        
-        // Add Pollinations as final fallback
-        console.log('Adding Pollinations as final fallback');
-        this.providers.push(new PollinationsProvider());
-      } else {
-        // Development setup - Use Groq as primary with fallbacks
-        console.log('Setting up DEVELOPMENT providers: Groq primary with OpenAI and Pollinations fallbacks');
-        
-        // Add Groq as primary provider
-        if (process.env.DEV_AI_KEY) {
-          console.log('Adding Groq as primary provider');
-          this.providers.push(new GroqProvider(process.env.DEV_AI_KEY));
-        }
-        
-        // Add OpenAI as fallback if key is available
-        if (process.env.OPENAI_API_KEY) {
-          console.log('Adding OpenAI as fallback');
-          this.providers.push(new OpenAIProvider(process.env.OPENAI_API_KEY, process.env.OPENAI_MODEL));
-        }
-        
-        // Add Pollinations as final fallback
-        console.log('Adding Pollinations as final fallback');
-        this.providers.push(new PollinationsProvider());
+    // Initialize Google Gemini Provider (Primary)
+    const googleApiKey = process.env.GOOGLE_API_KEY;
+    const googleModel = process.env.GOOGLE_MODEL || 'gemini-2.0-flash'; // Changed to gemini-2.0-flash
+    if (googleApiKey) {
+      try {
+        this.googleProvider = new GoogleProvider(googleApiKey, googleModel);
+        console.log('Google Gemini Provider instance created (Primary).');
+      } catch (e: any) {
+        console.error("Failed to instantiate GoogleProvider:", e.message);
       }
-      
-      // Log the provider setup
-      console.log(`Initialized ${this.providers.length} providers: ${this.providers.map(p => p.name).join(', ')}`);
+    } else {
+      console.warn('GOOGLE_API_KEY not found. Google Gemini provider (Primary) will not be available.');
     }
+
+    // Initialize OpenAI Provider (Fallback/Secondary)
+    const openAIAPIKey = process.env.OPENAI_API_KEY;
+    const openAIModel = process.env.OPENAI_MODEL || 'gpt-4o';
+    if (openAIAPIKey && !this.googleProvider) { // Only init if Google isn't primary or not available
+        try {
+            this.openAIProvider = new OpenAIProvider(openAIAPIKey, openAIModel);
+            console.log('OpenAI Provider instance created (Fallback).');
+        } catch (e: any) {
+            console.error("Failed to instantiate OpenAIProvider:", e.message);
+        }
+    } else if (openAIAPIKey && this.googleProvider) {
+        this.openAIProvider = new OpenAIProvider(openAIAPIKey, openAIModel); // Still init if key is there for potential direct use
+        console.log('OpenAI Provider instance created (available for other uses).');
+    }
+     else {
+      console.warn('OPENAI_API_KEY not found or Google is Primary. OpenAI provider will not be primary/fallback.');
+    }
+
+    // Initialize Groq Provider (Tertiary Fallback or specific use)
+    if (process.env.GROQ_API_KEY) {
+      try {
+        this.groqProvider = new GroqProvider(process.env.GROQ_API_KEY, process.env.DEV_AI_MODEL || 'qwen-qwq-32b');
+        console.log('Groq Provider instance created (available if needed).');
+      } catch (e: any) {
+        console.error("Failed to instantiate GroqProvider:", e.message);
+      }
+    } else {
+      console.warn('GROQ_API_KEY not found. Groq provider will not be available.');
+    }
+    
+    // Initialize Pollinations Provider (available if needed)
+    try {
+      this.pollinationsProvider = new PollinationsProvider(undefined, process.env.POLLINATIONS_MODEL || 'openai-large');
+      console.log('Pollinations Provider instance created (available if needed).');
+    } catch (e: any) {
+        console.error("Failed to instantiate PollinationsProvider:", e.message);
+    }
+    console.log('AIProviderManager constructor finished.');
   }
   
   async initialize(): Promise<void> {
-    console.log('Initializing AI providers...');
-    
-    // Check availability of all providers one by one, in order
-    for (let i = 0; i < this.providers.length; i++) {
-      const provider = this.providers[i];
-      console.log(`Testing provider ${provider.name}...`);
-      
-      try {
-        const isAvailable = await provider.isAvailable();
-        if (isAvailable) {
-          this.currentProviderIndex = i;
-          console.log(`Selected provider: ${provider.name}`);
-          return; // Successfully found a working provider
+    console.log('Verifying AI provider availability (Google Primary)...');
+    let primaryProviderReady = false;
+
+    if (this.googleProvider) {
+        console.log("Checking Google Gemini provider (Primary)...");
+        if (await this.googleProvider.isAvailable()) {
+            primaryProviderReady = true;
+            console.log('Google Gemini provider is available (Primary for questions and reports).');
         } else {
-          console.log(`Provider ${provider.name} is unavailable, trying next provider...`);
+            console.warn('Google Gemini provider (Primary) configured but not available.');
         }
-      } catch (error) {
-        console.error(`Error checking availability of provider ${provider.name}:`, error);
-        console.log(`Provider ${provider.name} check failed with error, trying next provider...`);
-      }
+    }
+
+    if (!primaryProviderReady && this.openAIProvider) {
+        console.log("Primary (Google) not available. Checking OpenAI provider (Fallback)...");
+        if (await this.openAIProvider.isAvailable()) {
+            primaryProviderReady = true; // Fallback becomes primary if Google fails
+            console.log('OpenAI provider is available (Fallback for questions and reports).');
+        } else {
+             console.warn('OpenAI provider (Fallback) configured but not available.');
+        }
     }
     
-    // If we get here, no providers are available
-    console.error('No AI providers are available! This is a critical error.');
-    throw new Error('No AI providers available');
-  }
-  
-  getCurrentProvider(): AIProvider {
-    return this.providers[this.currentProviderIndex];
-  }
-  
-  setProvider(providerName: string): boolean {
-    const index = this.providers.findIndex(p => p.name.toLowerCase() === providerName.toLowerCase());
-    if (index !== -1) {
-      this.currentProviderIndex = index;
-      console.log(`Switched to provider: ${this.providers[index].name}`);
-      return true;
+    if (!primaryProviderReady) {
+        console.error('CRITICAL: NO primary or fallback (Google/OpenAI) provider is available or configured! Core functionality will be affected.');
     }
-    return false;
-  }
-  
-  async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
-    const currentProvider = this.getCurrentProvider();
-    try {
-      console.log(`Generating report using ${currentProvider.name}...`);
-      return await currentProvider.generateReport(systemPrompt, userPrompt);
-    } catch (error) {
-      console.error(`Error with ${currentProvider.name}, trying fallback providers...`);
-      
-      // Try other providers in order
-      for (let i = 0; i < this.providers.length; i++) {
-        if (i === this.currentProviderIndex) continue; // Skip current provider
-        
-        try {
-          console.log(`Trying fallback provider ${this.providers[i].name}...`);
-          return await this.providers[i].generateReport(systemPrompt, userPrompt);
-        } catch (fallbackError) {
-          console.error(`Fallback provider ${this.providers[i].name} failed:`, fallbackError);
-        }
-      }
-      
-      throw new Error('All providers failed to generate report');
+    
+    if (this.groqProvider) {
+      if (await this.groqProvider.isAvailable()) console.log('Groq provider is available (Tertiary).');
+      else console.warn('Groq provider configured but not available.');
     }
+    if (this.pollinationsProvider) {
+      if (await this.pollinationsProvider.isAvailable()) console.log('Pollinations provider is available.');
+      else console.warn('Pollinations provider configured but not available.');
+    }
+    console.log('AI Provider availability check complete.');
   }
   
   async generateNextQuestion(systemPrompt: string, userPrompt: string): Promise<any> {
-    const currentProvider = this.getCurrentProvider();
-    try {
-      console.log(`Generating next question using ${currentProvider.name}...`);
-      return await currentProvider.generateNextQuestion(systemPrompt, userPrompt);
-    } catch (error) {
-      console.error(`Error with ${currentProvider.name}, trying fallback providers...`);
-      
-      // Try other providers in order
-      for (let i = 0; i < this.providers.length; i++) {
-        if (i === this.currentProviderIndex) continue; // Skip current provider
-        
-        try {
-          console.log(`Trying fallback provider ${this.providers[i].name}...`);
-          return await this.providers[i].generateNextQuestion(systemPrompt, userPrompt);
-        } catch (fallbackError) {
-          console.error(`Fallback provider ${this.providers[i].name} failed:`, fallbackError);
-        }
+    this.lastQuestionProviderName = undefined;
+    if (this.googleProvider && await this.googleProvider.isAvailable()) {
+      console.log('AI Manager: Requesting next question (delegating to Google Gemini).');
+      try {
+        const question = await this.googleProvider.generateNextQuestion(systemPrompt, userPrompt);
+        this.lastQuestionProviderName = this.googleProvider.name;
+        return question;
+      } catch (error) {
+        console.error('AI Manager: Google Gemini failed to generate next question:', error);
       }
-      
-      throw new Error('All providers failed to generate next question');
     }
+    
+    if (this.openAIProvider && await this.openAIProvider.isAvailable()) {
+        console.warn('AI Manager: Google Gemini failed or unavailable. Trying OpenAI for next question.');
+        try {
+            const question = await this.openAIProvider.generateNextQuestion(systemPrompt, userPrompt);
+            this.lastQuestionProviderName = this.openAIProvider.name;
+            return question;
+        } catch (error) {
+            console.error('AI Manager: OpenAI also failed to generate next question:', error);
+        }
+    }
+
+    // Add Groq as a final fallback for questions if specifically needed, or remove if not desired.
+    // For now, keeping it simple with Google -> OpenAI.
+    console.error('AI Manager: All primary/fallback providers (Google, OpenAI) failed for questions.');
+    throw new Error('All configured AI providers for question generation failed.');
+  }
+  
+  async generateReport(systemPrompt: string, userPrompt: string): Promise<string> {
+    console.log('AIProviderManager: Attempting to generate report.');
+    this.lastReportProviderName = undefined;
+
+    // Prioritize OpenAI
+    if (this.openAIProvider && await this.openAIProvider.isAvailable()) {
+      try {
+        console.log('AIProviderManager: Using OpenAI for report generation (priority).');
+        const report = await this.openAIProvider.generateReport(systemPrompt, userPrompt);
+        this.lastReportProviderName = this.openAIProvider.name;
+        return report;
+      } catch (error) {
+        console.warn('AIProviderManager: OpenAI report generation failed (priority attempt), trying next available:', error);
+        // Fall through to other providers if OpenAI fails
+      }
+    }
+
+    // Fallback to existing logic (Groq then Google, then Pollinations as last resort or error)
+    if (this.groqProvider && await this.groqProvider.isAvailable()) {
+      try {
+        console.log('AIProviderManager: Using Groq for report generation.');
+        const report = await this.groqProvider.generateReport(systemPrompt, userPrompt);
+        this.lastReportProviderName = this.groqProvider.name;
+        return report;
+      } catch (error) {
+        console.warn('AIProviderManager: Groq report generation failed, trying next available:', error);
+      }
+    }
+    
+    if (this.googleProvider && await this.googleProvider.isAvailable()) {
+      try {
+        console.log('AIProviderManager: Using Google for report generation.');
+        const report = await this.googleProvider.generateReport(systemPrompt, userPrompt);
+        this.lastReportProviderName = this.googleProvider.name;
+        return report;
+      } catch (error) {
+        console.warn('AIProviderManager: Google report generation failed, trying Pollinations as last resort:', error);
+      }
+    }
+
+    // Last resort: Pollinations (if it was ever intended for full reports)
+    // Or, if you prefer to error out if primary/secondary fail, adjust this section.
+    if (this.pollinationsProvider && await this.pollinationsProvider.isAvailable()) {
+        try {
+            console.log('AIProviderManager: Using Pollinations for report generation (fallback).');
+            const report = await this.pollinationsProvider.generateReport(systemPrompt, userPrompt);
+            this.lastReportProviderName = this.pollinationsProvider.name;
+            return report;
+        } catch (error) {
+            console.error('AIProviderManager: Pollinations report generation failed (fallback attempt):', error);
+        }
+    }
+
+    console.error('AIProviderManager: No AI provider available or all failed for report generation.');
+    throw new Error('All AI providers for report generation failed or are unavailable.');
+  }
+
+  getReportProviderName(): string | undefined {
+    return this.lastReportProviderName;
+  }
+  
+  getQuestionProviderName(): string | undefined {
+    return this.lastQuestionProviderName;
   }
 }
 

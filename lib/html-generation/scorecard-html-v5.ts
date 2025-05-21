@@ -885,6 +885,25 @@ export function generateScorecardHTMLv5(reportData: ScoreCardData): string {
         box-shadow: none;
         border-radius: 0;
       }
+      
+      .section-card {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      
+      .findings-col {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      
+      .qa-card {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      
+      .footer {
+        margin-top: 0;
+      }
     }
 
     @media (max-width: 768px) {
@@ -913,7 +932,6 @@ export function generateScorecardHTMLv5(reportData: ScoreCardData): string {
     <div class="top-gradient-bar"></div>
     
     <header class="header">
-      <div class="header-logo">AI</div>
       <h1 class="report-title">AI Efficiency Scorecard</h1>
       <p class="report-subtitle">A comprehensive assessment of AI effectiveness and strategic opportunities</p>
       
@@ -975,9 +993,6 @@ export function generateScorecardHTMLv5(reportData: ScoreCardData): string {
         </div>
       </div>` : ''}
       
-      <!-- Banner Image -->
-      <img src="https://source.unsplash.com/800x300/?artificial-intelligence,technology" alt="AI Technology" class="banner-image" />
-      
       <!-- Key Findings Section with Two Columns -->
       ${sections.keyFindings ? `
       <div class="section-card">
@@ -1011,7 +1026,6 @@ export function generateScorecardHTMLv5(reportData: ScoreCardData): string {
           <h2>Strategic Action Plan</h2>
         </div>
         <div class="card-body action-section">
-          <img src="https://source.unsplash.com/800x200/?strategy,planning" alt="Strategic Planning" class="banner-image action-banner" />
           <div class="callout-box">
             <div class="callout-title">Why This Matters</div>
             <div class="callout-content">
@@ -1035,7 +1049,7 @@ export function generateScorecardHTMLv5(reportData: ScoreCardData): string {
           </div>
           <div class="card-body ${section.specialClass}">
             ${section.title.includes('Getting Started') || section.title.includes('Resources') ? 
-              `<img src="https://source.unsplash.com/800x180/?business,analytics" alt="Business Resources" class="banner-image resources-banner">` : ''}
+              `` : ''}
             
             ${section.content}
             

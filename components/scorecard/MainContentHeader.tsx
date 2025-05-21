@@ -4,10 +4,17 @@ import React, { useState } from 'react';
 
 interface MainContentHeaderProps {
   activeTabTitle: string;
-  reportMarkdown: string; // For the "Copy JSON" functionality
+  reportMarkdown: string; 
+  reportId?: string;
+  onPdfDownload?: () => void;
 }
 
-const MainContentHeader: React.FC<MainContentHeaderProps> = ({ activeTabTitle, reportMarkdown }) => {
+const MainContentHeader: React.FC<MainContentHeaderProps> = ({ 
+  activeTabTitle, 
+  reportMarkdown,
+  reportId,
+  onPdfDownload
+}) => {
   const [linkGenerated, setLinkGenerated] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -16,7 +23,7 @@ const MainContentHeader: React.FC<MainContentHeaderProps> = ({ activeTabTitle, r
       navigator.clipboard.writeText(reportMarkdown)
         .then(() => {
           setCopied(true);
-          setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+          setTimeout(() => setCopied(false), 2000);
         })
         .catch(err => {
           console.error('Failed to copy text: ', err);
@@ -26,19 +33,34 @@ const MainContentHeader: React.FC<MainContentHeaderProps> = ({ activeTabTitle, r
     }
   };
 
-  // Placeholder for PDF download
   const handleDownloadPDF = () => {
-    alert('Download PDF functionality is not yet implemented.');
+    if (onPdfDownload) {
+      onPdfDownload();
+    } else if (reportId) {
+      // Fallback if no handler provided but we have a reportId
+      window.open(`/api/generate-presentation-weasyprint-report?reportId=${reportId}`, '_blank');
+    }
   };
 
-  // Placeholder for Generate Link
   const handleGenerateLink = () => {
-    setLinkGenerated(prev => !prev); // Simple toggle for now
-    if (!linkGenerated) {
-        navigator.clipboard.writeText('http://localhost:3003/scorecard/results#link-placeholder')
-        .then(() => { console.log('Placeholder link copied')})
-        .catch(err => { console.error('Failed to copy placeholder link', err)});
+    if (!reportId) {
+      console.error('Cannot generate link: No report ID available');
+      return;
     }
+    
+    // Create a shareable URL with the reportId
+    const shareUrl = `${window.location.origin}/scorecard/results?reportId=${reportId}`;
+    
+    // Copy the URL to clipboard
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        setLinkGenerated(true);
+        setTimeout(() => setLinkGenerated(false), 3000);
+        console.log('Shareable link copied:', shareUrl);
+      })
+      .catch(err => {
+        console.error('Failed to copy shareable link', err);
+      });
   };
 
   return (
@@ -77,7 +99,7 @@ const MainContentHeader: React.FC<MainContentHeaderProps> = ({ activeTabTitle, r
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
           </svg>
-          Copy JSON
+          {copied ? 'Copied!' : 'Copy JSON'}
         </button>
       </div>
     </div>

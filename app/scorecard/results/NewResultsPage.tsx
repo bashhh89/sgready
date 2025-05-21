@@ -13,17 +13,8 @@ import rehypeSanitize from 'rehype-sanitize';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { ToastProvider, useToast, Toaster } from '@/components/ui/toast-provider';
 import SimplePdfButton from '@/components/ui/pdf-download/SimplePdfButton';
-import ScoreCardPDFButtonV5 from '@/components/ui/pdf-download/ScoreCardPDFButtonV5';
+import PresentationPDFButton from '@/components/ui/pdf-download/PresentationPDFButton';
 import { toast as sonnerToast } from 'sonner';
-
-// Import mock data for development
-import { mockLeaderReport, mockEnablerReport, mockDabblerReport, getMockReportByTier } from '@/lib/mockData';
-
-// Development flag - set to true to use mock data instead of Firestore
-// Set this to false before deploying to production
-const USE_MOCK_DATA = false;
-// You can specify which mock report to use during development
-const MOCK_TIER_FOR_DEV = "leader"; // "leader", "enabler", or "dabbler"
 
 // Import all section components
 import { 
@@ -69,6 +60,7 @@ export default function NewResultsPage() {
   const [isSharing, setIsSharing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isPresentationPdfLoading, setIsPresentationPdfLoading] = useState(false);
   
   // Initialize toast hook
   const { toast } = useToast();
@@ -618,6 +610,117 @@ export default function NewResultsPage() {
     }
   };
 
+  // Handler for presentation-style PDF using WeasyPrint
+  const handlePresentationPdf = async () => {
+    try {
+      setIsPresentationPdfLoading(true);
+      
+      // First, fetch the complete user data from Firestore to get CompanyName and Email
+      if (!reportId) {
+        throw new Error("Report ID is missing, cannot fetch user data");
+      }
+      
+      console.log("PRESENTATION PDF: Fetching complete user data for report:", reportId);
+      
+      // Fetch the complete report data from Firestore
+      const reportRef = doc(db, 'scorecardReports', reportId);
+      const reportSnapshot = await getDoc(reportRef);
+      
+      if (!reportSnapshot.exists()) {
+        throw new Error(`No report found with ID: ${reportId}`);
+      }
+      
+      const reportData = reportSnapshot.data();
+      console.log("PRESENTATION PDF: Retrieved Firestore data:", {
+        reportId,
+        hasUserInfo: !!reportData.userInformation,
+        hasCompanyName: !!reportData.userInformation?.companyName,
+        hasEmail: !!reportData.userInformation?.email
+      });
+      
+      // Extract user information with proper fallbacks
+      const userInfo = reportData.userInformation || {};
+      const companyName = userInfo.companyName || reportData.companyName || "Company Not Provided"; // Use actual company name from data
+      const email = userInfo.email || reportData.email || "ahmadbasheerr@gmail.com"; // Use actual email from data
+      
+      // Format the report data for the PDF with correct company name and email
+      const pdfReportData = {
+        UserInformation: {
+          Industry: userIndustry || reportData.industry || 'Property/Real Estate',
+          UserName: userName || reportData.userName || 'Ahmad Basheer',
+          CompanyName: companyName, // Use the actual company name, not industry
+          Email: email // Use the actual email, not a placeholder
+        },
+        ScoreInformation: {
+          AITier: userTier || reportData.tier || reportData.userAITier || 'Enabler',
+          FinalScore: reportData.finalScore || null, // Use the actual score if available
+          ReportID: reportId
+        },
+        QuestionAnswerHistory: questionAnswerHistory || reportData.questionAnswerHistory || [],
+        FullReportMarkdown: reportMarkdown || reportData.reportMarkdown || ''
+      };
+      
+      // Log the data being sent to the PDF generator
+      console.log("PRESENTATION PDF: Sending data to PDF generator:", {
+        UserName: pdfReportData.UserInformation.UserName,
+        CompanyName: pdfReportData.UserInformation.CompanyName,
+        Industry: pdfReportData.UserInformation.Industry,
+        Email: pdfReportData.UserInformation.Email,
+        AITier: pdfReportData.ScoreInformation.AITier,
+        FinalScore: pdfReportData.ScoreInformation.FinalScore
+      });
+      
+      // Call the WeasyPrint API endpoint
+      const response = await fetch('/api/generate-presentation-weasyprint-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(pdfReportData),
+      });
+
+      if (!response.ok) {
+        // Try to get error details if available
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Error: ${response.status}`);
+        } catch (e) {
+          throw new Error(`Error: ${response.status}`);
+        }
+      }
+
+      // Create blob from response
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      // Use the actual company name in the filename
+      a.download = `${pdfReportData.UserInformation.UserName}_${companyName}_AI_Scorecard_Presentation.pdf`.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      
+      // Append to document, click and remove
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      // Show success toast
+      sonnerToast.success('Presentation PDF downloaded successfully', {
+        description: 'Your presentation-style report has been generated.'
+      });
+      
+    } catch (err) {
+      console.error('Failed to generate Presentation-style PDF:', err);
+      sonnerToast.error('Failed to generate PDF', {
+        description: err instanceof Error ? err.message : 'Unknown error occurred'
+      });
+    } finally {
+      setIsPresentationPdfLoading(false);
+    }
+  };
+
   // Helper function to generate recommendation descriptions
   const getRecommendationDescription = (index: number, action: string): string => {
     // Generate contextual descriptions based on keywords in the action item
@@ -902,7 +1005,8 @@ export default function NewResultsPage() {
               <div className="header-content">
                 <div className="flex items-center gap-3">
                   <div className="logo-container">
-                    <div className="logo-inner">AI</div>
+                    {/* Replace text logo with Image component */}
+                    <Image src="/footer-logo.svg" alt="AI Efficiency Scorecard Logo" width={150} height={30} className="logo-inner" />
                   </div>
                   <h1>AI Efficiency Scorecard</h1>
                 </div>
@@ -910,16 +1014,16 @@ export default function NewResultsPage() {
                   <div className="flex space-x-3">
                     <button
                       onClick={handleShareReport}
-                      className="flex items-center justify-center gap-2 bg-sg-dark-teal text-white hover:bg-sg-dark-teal/90 transition-colors px-4 py-2 rounded-md"
+                      className="flex items-center gap-2 bg-white text-[#103138] border border-[#103138] hover:bg-gray-50 transition-colors px-4 py-2 rounded-md font-medium mx-2"
                       disabled={isSharing}
                     >
                       {isSharing ? (
-                        <span className="flex items-center">
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <span className="flex items-center justify-center gap-2">
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          Sharing...
+                          <span>Sharing...</span>
                         </span>
                       ) : (
                         <>
@@ -931,28 +1035,14 @@ export default function NewResultsPage() {
                       )}
                     </button>
 
-                    {/* Replace the PDF download button with our component */}
+                    {/* PDF download button */}
                     <div id="pdf-download-container" className="flex gap-2">
-                      {/* {false && <SimplePdfButton
-                        reportData={formatReportDataForPDF()}
-                        className="w-full px-4 py-2 mb-2 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-200"
-                      />} */}
-
-                      {/* {false && <button
-                        onClick={handleDownloadPdfV2}
-                        className="flex items-center justify-center gap-2 bg-sg-accent-green text-sg-dark-teal hover:bg-sg-accent-green/90 transition-colors px-4 py-2 rounded-md font-medium"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
-                          <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"></path>
-                          <path d="M9 15l3 3l3 -3"></path>
-                          <path d="M12 12v6"></path>
-                        </svg>
-                        <span>PDF V2</span>
-                      </button>} */}
-
-                      {/* New PDFShift API-based PDF V5 Button */}
-                      <ScoreCardPDFButtonV5 />
+                      {/* PresentationPDFButton as the only PDF download option */}
+                      <PresentationPDFButton 
+                        onGeneratePDF={handlePresentationPdf}
+                        isLoading={isPresentationPdfLoading}
+                        className="btn-primary-divine bg-[#20E28F] text-[#103138] hover:bg-[#20E28F]/90"
+                      />
                     </div>
                   </div>
                 </div>

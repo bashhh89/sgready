@@ -17,7 +17,6 @@ export default function AIAnswerEngineRevolutionContent() {
       {/* Insight Brief Header Banner */}
       <div className="relative mb-10 rounded-2xl overflow-hidden shadow-2xl">
         <div className="absolute inset-0 bg-gradient-to-r from-sg-dark-teal/90 to-sg-bright-green/80 z-10"></div>
-        <div className="absolute inset-0 bg-[url('/images/abstract-ai-pattern.svg')] bg-cover bg-center mix-blend-overlay z-0"></div>
         <div className="relative z-20 px-10 py-12">
           <div className="flex items-center gap-3 mb-4">
             <div className="bg-white/20 backdrop-blur-sm px-4 py-1.5 rounded-lg">

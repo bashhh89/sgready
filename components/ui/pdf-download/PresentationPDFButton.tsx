@@ -1,40 +1,41 @@
 'use client';
 
 import React, { useState } from 'react';
+import { toast } from 'sonner';
+
+interface PresentationPDFButtonProps {
+  onGeneratePDF: () => Promise<void>;
+  isLoading: boolean;
+  className?: string;
+}
 
 /**
- * ScoreCardPDFButtonV5 Component
+ * PresentationPDFButton Component
  * 
- * This component renders a button that triggers the V5 PDF generation
- * using the PDFShift API implementation.
+ * This component renders a button that triggers the presentation-style PDF generation
+ * using the WeasyPrint service.
  */
-const ScoreCardPDFButtonV5: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const handleDownloadClick = () => {
-    setIsLoading(true);
-    
+const PresentationPDFButton: React.FC<PresentationPDFButtonProps> = ({ 
+  onGeneratePDF,
+  isLoading,
+  className = ''
+}) => {
+  const handleClick = async () => {
     try {
-      // Direct the browser to the PDF API endpoint
-      // This will trigger the download automatically
-      window.location.href = '/api/generate-scorecard-report-v5';
-      
-      // Set a timeout to reset the loading state after a few seconds
-      // This is because window.location.href will navigate away and we won't know when it's done
-      setTimeout(() => {
-        setIsLoading(false);
-      }, 3000);
+      await onGeneratePDF();
     } catch (error) {
-      console.error('Error downloading PDF:', error);
-      setIsLoading(false);
+      console.error('Error generating presentation PDF:', error);
+      toast.error('Failed to generate PDF', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
     }
   };
   
   return (
     <button
-      onClick={handleDownloadClick}
+      onClick={handleClick}
       disabled={isLoading}
-      className="btn-primary-divine flex items-center gap-2 py-2 px-4 bg-[#20E28F] text-[#103138] hover:bg-[#20E28F]/90 font-medium rounded-md transition-colors"
+      className={`flex items-center gap-2 py-2 px-4 font-medium rounded-md transition-colors ${className || 'btn-secondary-divine bg-[#103138] text-white hover:bg-[#103138]/90'}`}
     >
       {isLoading ? (
         <span className="flex items-center justify-center gap-2">
@@ -56,4 +57,4 @@ const ScoreCardPDFButtonV5: React.FC = () => {
   );
 };
 
-export default ScoreCardPDFButtonV5; 
+export default PresentationPDFButton; 

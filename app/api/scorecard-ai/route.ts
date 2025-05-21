@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import aiManager from '@/lib/ai-providers';
+import { AIProviderManager } from '@/lib/ai-providers';
 
 // Define ScorecardHistoryEntry interface for type safety
 type AnswerSourceType = 'Groq Llama 3 8B' | 'Pollinations Fallback' | 'Groq API Failed' | 'Fallback Failed' | 'Manual' | 'OpenAI';
@@ -446,6 +446,7 @@ function debugTierCalculation() {
 }
 
 export async function POST(request: Request) {
+  const localAiManager = new AIProviderManager();
   try {
     // Run debug tests in development
     if (process.env.NODE_ENV === 'development') {
@@ -499,16 +500,16 @@ export async function POST(request: Request) {
     
     // Check if this is a report generation request
     if (action === 'generateReport') {
-      return handleReportGeneration(history as ScorecardHistoryEntry[], industry, userName);
+      return handleReportGeneration(history as ScorecardHistoryEntry[], industry, userName, localAiManager);
     } else {
       // For phased Q&A logic
       if (!currentPhaseName && history.length === 0) {  // Now safe to check history.length
         // For the initial call with no phase specified, default to first phase
         const firstPhase = ASSESSMENT_PHASES[0];
-        return handleAssessmentRequest(firstPhase, [], industry);
+        return handleAssessmentRequest(firstPhase, [], industry, localAiManager);
       }
       
-      return handleAssessmentRequest(currentPhaseName, history as ScorecardHistoryEntry[], industry);
+      return handleAssessmentRequest(currentPhaseName, history as ScorecardHistoryEntry[], industry, localAiManager);
     }
   } catch (error) {
     console.error('Error in scorecard-ai API route:', error);
@@ -519,7 +520,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function handleReportGeneration(history: ScorecardHistoryEntry[], industry: string, userName?: string) {
+async function handleReportGeneration(history: ScorecardHistoryEntry[], industry: string, userName: string | undefined, aiManagerInstance: AIProviderManager) {
   try {
     // Run our debug verification tests before starting actual calculation
     console.log('>>> BACKEND: Running tier verification tests before processing actual submission');
@@ -561,9 +562,19 @@ async function handleReportGeneration(history: ScorecardHistoryEntry[], industry
       learningPathInstructions = "Recommend advanced resources, focusing on strategic AI deployment, governance, and staying ahead of the curve.";
     }
 
+    // Extract company name from history if available
+    let companyName = '';
+    for (const entry of history) {
+      if (entry.question && entry.question.toLowerCase().includes('company name') && entry.answer) {
+        companyName = String(entry.answer).trim();
+        console.log('>>> BACKEND: Found company name in history:', companyName);
+        break;
+      }
+    }
+
     // Create the system prompt for report generation, injecting the calculated tier and persona
     const systemPrompt = `You are an expert AI consultant specializing in helping organizations assess and improve their AI maturity and efficiency. 
-${userName ? `You're preparing a personalized report for ${userName}, who is ${personaDescription} in the ${industry} industry.` : `You're preparing a report for an organization in the ${industry} industry, whose profile aligns with that of ${personaDescription}.`}
+${userName ? `You're preparing a personalized report for ${userName}${companyName ? ' at ' + companyName : ''}, who is ${personaDescription} in the ${industry} industry.` : `You're preparing a report for an organization${companyName ? ' named ' + companyName : ''} in the ${industry} industry, whose profile aligns with that of ${personaDescription}.`}
 Based on the assessment questions and answers provided, your task is to generate a comprehensive AI Efficiency Scorecard report tailored specifically for a **${userAITier} Marketing Manager** in the **${industry}** industry.
 Crucially, you MUST ONLY output the content of the report itself. DO NOT include any introductory or concluding remarks, disclaimers, signatures, or promotional content of any kind, including for other products or services.
 
@@ -572,6 +583,8 @@ EXTREMELY IMPORTANT: DO NOT include ANY advertisements, promotional content, ext
 Generate the report adhering STRICTLY to the following structure and tailoring the content to the **${userAITier}** persona and **${industry}** industry. Follow these specific instructions for each section:
 
 ## Overall Tier: ${userAITier}
+Include the user's final score here in the format "Final Score: [score]/100" on a new line.
+${companyName ? 'Include the company name "' + companyName + '" on a separate line.' : ''}
 
 ## Key Findings
 ${keyFindingsInstructions}
@@ -599,7 +612,7 @@ Provide a detailed, step-by-step action plan tailored to the user's tier and ide
 2. Include specific discussion topics and measurable outcomes/next steps.
 
 ### Example Prompts for ${industry} Marketing Managers
-- Create 2-3 actual example prompts that a marketing manager in ${industry} could immediately use.
+- Create 2-3 actual example prompts that a marketing manager in ${industry}
 - Format as "PROMPT: [actual prompt text]" and "USE CASE: [brief explanation]".
 
 ### Basic AI Data Audit Process Outline
@@ -644,15 +657,15 @@ FINAL REMINDER: DO NOT add ANY additional content after the Learning Path sectio
     console.log('History length:', history.length);
 
     // Initialize AI provider manager if needed
-    await aiManager.initialize();
+    await aiManagerInstance.initialize();
     
     // Use the AI provider manager to generate the report
     const userPrompt = `Analyze the following assessment history for the ${industry} industry and generate the comprehensive Markdown report as instructed. IMPORTANT: Do NOT include any advertisements, promotional content, or external links in your response: ${JSON.stringify(history)}`;
     
     let reportMarkdown;
     try {
-      reportMarkdown = await aiManager.generateReport(systemPrompt, userPrompt);
-      console.log('>>> BACKEND: Successfully generated report using', aiManager.getCurrentProvider().name);
+      reportMarkdown = await aiManagerInstance.generateReport(systemPrompt, userPrompt);
+      console.log('>>> BACKEND: Successfully generated report using', aiManagerInstance.getReportProviderName() || 'Unknown Provider');
     } catch (error) {
       console.error('>>> BACKEND: All AI providers failed:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -669,6 +682,17 @@ FINAL REMINDER: DO NOT add ANY additional content after the Learning Path sectio
     const tierMatch = reportMarkdown.match(/## Overall Tier:\s*(.+)/);
     const extractedTier = tierMatch ? tierMatch[1].trim() : 'N/A';
     console.log('>>> BACKEND: Extracted Tier:', extractedTier);
+    
+    // Extract the final score from the Overall Tier section if it exists
+    let finalScore: number | null = score; // Default to calculated score
+    const scoreMatch = reportMarkdown.match(/Final Score:\s*(\d+)(?:\/(\d+))?/i);
+    if (scoreMatch && scoreMatch[1]) {
+      const extractedScore = parseInt(scoreMatch[1], 10);
+      if (!isNaN(extractedScore)) {
+        finalScore = extractedScore;
+        console.log('>>> BACKEND: Extracted Final Score from markdown:', finalScore);
+      }
+    }
 
     // Final verification to ensure all ads are removed
     if (reportMarkdown.includes('pollinations.ai') || 
@@ -684,9 +708,11 @@ FINAL REMINDER: DO NOT add ANY additional content after the Learning Path sectio
     return NextResponse.json({
       reportMarkdown,
       userAITier: extractedTier, // Include the extracted tier in the response
+      finalScore: finalScore, // Include the final score
+      companyName: companyName || null, // Include the company name if found
       systemPromptUsed: systemPrompt, // Include the final system prompt
       status: 'resultsGenerated',
-      providerUsed: aiManager.getCurrentProvider().name // Include which provider was used
+      providerUsed: aiManagerInstance.getReportProviderName() || 'Unknown Report Provider' // Use instance
     }, { status: 200 });
   } catch (error) {
     console.error('Error in report generation:', error);
@@ -727,9 +753,6 @@ function cleanReportMarkdown(markdown: string, aggressive: boolean = false): str
     
     // Catch any remaining links to pollinations.ai
     /\(https?:\/\/.*?pollinations\.ai.*?\)/g,
-    
-    // Any content that appears after a horizontal rule at the end
-    /\n---\s*\n(?!#).*/g,
   ];
   
   // Apply each pattern
@@ -741,29 +764,32 @@ function cleanReportMarkdown(markdown: string, aggressive: boolean = false): str
   if (aggressive || originalLength !== cleanedMarkdown.length) {
     // If any cleaning was done in step 1 or aggressive mode is requested
     
-    // Remove all horizontal rules and content that follows near the end
-    const parts = cleanedMarkdown.split(/\n---\s*\n/);
-    if (parts.length > 1) {
-      // Keep only the content before the last horizontal rule
-      cleanedMarkdown = parts[0];
-      
-      // Or keep all except the last part if it doesn't start with a markdown heading
-      // This assumes ads come after the last section
-      /*
-      if (!parts[parts.length - 1].trimStart().startsWith('#')) {
-        cleanedMarkdown = parts.slice(0, -1).join('\n');
+    // Modified: Be more careful with horizontal rules to avoid removing important content
+    // Only remove horizontal rules at the very end of the document
+    const lastHorizontalRulePos = cleanedMarkdown.lastIndexOf('\n---');
+    if (lastHorizontalRulePos > 0 && 
+        lastHorizontalRulePos > cleanedMarkdown.length - 100) { // If it's near the end
+      // Check if there's any proper section header after it
+      const textAfterLastRule = cleanedMarkdown.substring(lastHorizontalRulePos);
+      if (!textAfterLastRule.includes('## ')) {
+        cleanedMarkdown = cleanedMarkdown.substring(0, lastHorizontalRulePos);
       }
-      */
     }
     
-    // Remove any lines containing "Learn more" anywhere
+    // Remove any lines containing "Learn more" + URL
     cleanedMarkdown = cleanedMarkdown.split('\n')
-      .filter(line => !line.includes('Learn more'))
+      .filter(line => !(line.includes('Learn more') && line.includes('http')))
       .join('\n');
     
-    // Remove any lines containing URLs to external services
+    // More selective URL filtering - only remove standalone URL lines or obvious ads
     cleanedMarkdown = cleanedMarkdown.split('\n')
-      .filter(line => !line.includes('http'))
+      .filter(line => {
+        // Keep lines with URLs if they appear to be part of legitimate content
+        const isObviousAdOrStandaloneURL = 
+          (line.trim().startsWith('http') && line.trim().length < 100) || 
+          (line.includes('http') && (line.includes('promotion') || line.includes('discount') || line.includes('special offer')));
+        return !isObviousAdOrStandaloneURL;
+      })
       .join('\n');
   }
   
@@ -801,7 +827,72 @@ function cleanReportMarkdown(markdown: string, aggressive: boolean = false): str
     console.warn('>>> BACKEND: WARNING - Report does not end with an expected Learning Path section.');
   }
   
-  // Step 4: Final cleanup
+  // Step 4: Check for required sections and log warnings if any are missing
+  const requiredSections = [
+    { name: 'Overall Tier', pattern: /## Overall Tier:/ },
+    { name: 'Key Findings', pattern: /## Key Findings/ },
+    { name: 'Strengths', pattern: /\*\*Strengths:\*\*/ },
+    { name: 'Weaknesses', pattern: /\*\*Weaknesses:\*\*/ },
+    { name: 'Strategic Action Plan', pattern: /## Strategic Action Plan/ },
+    { name: 'Getting Started & Resources', pattern: /## Getting Started & Resources/ },
+    { name: 'Illustrative Benchmarks', pattern: /## Illustrative Benchmarks/ },
+    { name: 'Learning Path', pattern: /(## Your Personalized AI Learning Path|## Personalized AI Learning Path|## Learning Path)/ }
+  ];
+  
+  let missingSections = requiredSections.filter(section => 
+    !section.pattern.test(cleanedMarkdown)
+  );
+  
+  if (missingSections.length > 0) {
+    console.warn(`>>> BACKEND: WARNING - The following required sections are missing: ${missingSections.map(s => s.name).join(', ')}`);
+    
+    // Additional check for partial/incomplete sections
+    requiredSections.forEach(section => {
+      if (section.pattern.test(cleanedMarkdown)) {
+        const sectionMatch = cleanedMarkdown.match(section.pattern);
+        if (sectionMatch) {
+          const sectionStart = sectionMatch.index;
+          // Find the end (next section heading or end of document)
+          const nextSectionMatch = cleanedMarkdown.substring(sectionStart + 1).match(/## [A-Za-z]/);
+          const sectionEnd = nextSectionMatch ? sectionStart + 1 + nextSectionMatch.index : cleanedMarkdown.length;
+          const sectionContent = cleanedMarkdown.substring(sectionStart, sectionEnd);
+          
+          // Check if section has sufficient content
+          if (sectionContent.length < 100) { // Arbitrary threshold
+            console.warn(`>>> BACKEND: WARNING - Section '${section.name}' may be incomplete or have insufficient content`);
+          }
+        }
+      }
+    });
+  }
+  
+  // Step 5: Fix common issues with benchmark sections
+  if (cleanedMarkdown.includes('## Illustrative Benchmarks')) {
+    // Check if all three tier sections exist
+    const hasDabblerSection = /### Dabbler Tier/i.test(cleanedMarkdown);
+    const hasEnablerSection = /### Enabler Tier/i.test(cleanedMarkdown);
+    const hasLeaderSection = /### Leader Tier/i.test(cleanedMarkdown);
+    
+    // Log warning if any tier section is missing
+    if (!hasDabblerSection || !hasEnablerSection || !hasLeaderSection) {
+      console.warn(`>>> BACKEND: WARNING - The benchmarks section is missing one or more tier sections: ${!hasDabblerSection ? 'Dabbler' : ''}${!hasEnablerSection ? ' Enabler' : ''}${!hasLeaderSection ? ' Leader' : ''}`);
+    }
+  }
+  
+  // Step 6: Fix common issues with resources section
+  if (cleanedMarkdown.includes('## Getting Started & Resources')) {
+    // Check if all required subsections exist
+    const hasMeetingAgenda = /### Sample AI Goal-Setting Meeting Agenda/i.test(cleanedMarkdown);
+    const hasExamplePrompts = /### Example Prompts/i.test(cleanedMarkdown);
+    const hasDataAudit = /### Basic AI Data Audit/i.test(cleanedMarkdown);
+    
+    // Log warning if any subsection is missing
+    if (!hasMeetingAgenda || !hasExamplePrompts || !hasDataAudit) {
+      console.warn(`>>> BACKEND: WARNING - The resources section is missing one or more required subsections: ${!hasMeetingAgenda ? 'Meeting Agenda' : ''}${!hasExamplePrompts ? ' Example Prompts' : ''}${!hasDataAudit ? ' Data Audit Process' : ''}`);
+    }
+  }
+  
+  // Step 7: Final cleanup
   // Remove any trailing horizontal rules or dashes
   cleanedMarkdown = cleanedMarkdown.replace(/\n-{3,}\s*$/g, '');
   
@@ -817,7 +908,7 @@ function cleanReportMarkdown(markdown: string, aggressive: boolean = false): str
   return cleanedMarkdown;
 }
 
-async function handleAssessmentRequest(currentPhaseName: string, history: ScorecardHistoryEntry[], industry: string) {
+async function handleAssessmentRequest(currentPhaseName: string, history: ScorecardHistoryEntry[], industry: string, aiManagerInstance: AIProviderManager) {
   try {
     // Check if we've reached MAX_QUESTIONS
     if (history.length >= MAX_QUESTIONS) {
@@ -835,7 +926,7 @@ async function handleAssessmentRequest(currentPhaseName: string, history: Scorec
     const currentPhaseIndex = ASSESSMENT_PHASES.indexOf(currentPhaseName);
     if (currentPhaseIndex < 0) {
       // If current phase not found, start with the first phase
-      return await handleAssessmentRequest(ASSESSMENT_PHASES[0], history, industry);
+      return await handleAssessmentRequest(ASSESSMENT_PHASES[0], history, industry, aiManagerInstance);
     }
     
     // Check if we need to move to the next phase
@@ -845,7 +936,7 @@ async function handleAssessmentRequest(currentPhaseName: string, history: Scorec
     if (questionsInCurrentPhase >= questionsPerPhase && currentPhaseIndex < ASSESSMENT_PHASES.length - 1) {
       const nextPhase = ASSESSMENT_PHASES[currentPhaseIndex + 1];
       console.log(`>>> BACKEND: Moving to next phase: ${nextPhase}`);
-      return await handleAssessmentRequest(nextPhase, history, industry);
+      return await handleAssessmentRequest(nextPhase, history, industry, aiManagerInstance);
     }
 
     // Create the system prompt for question generation
@@ -910,15 +1001,15 @@ Return JSON: {
     const userPrompt = `Based on history: ${JSON.stringify(history)}, generate next question.`;
     
     // Initialize AI provider manager if needed
-    await aiManager.initialize();
+    await aiManagerInstance.initialize();
     
-    console.log(`>>> BACKEND: Generating next question using ${aiManager.getCurrentProvider().name}...`);
+    console.log(`>>> BACKEND: Generating next question using OpenAI (as per new provider logic)...`);
     
     let parsedResponse;
     try {
       // Use the AI provider manager to generate the next question
-      parsedResponse = await aiManager.generateNextQuestion(systemPrompt, userPrompt);
-      console.log(`>>> BACKEND: Successfully generated question using ${aiManager.getCurrentProvider().name}`);
+      parsedResponse = await aiManagerInstance.generateNextQuestion(systemPrompt, userPrompt);
+      console.log(`>>> BACKEND: Successfully generated question using OpenAI.`);
       console.log(`>>> BACKEND: Original AI response question type: ${parsedResponse.answerType}`);
       console.log(`>>> BACKEND: Question text: "${parsedResponse.questionText && parsedResponse.questionText.substring(0, 100)}..."`);
     } catch (error) {
@@ -1033,7 +1124,7 @@ Return JSON: {
         if (currentPhaseIndex < ASSESSMENT_PHASES.length - 1) {
           const nextPhase = ASSESSMENT_PHASES[currentPhaseIndex + 1];
           console.log(`>>> BACKEND: Moving to next phase due to repeated questions: ${nextPhase}`);
-          return await handleAssessmentRequest(nextPhase, history, industry);
+          return await handleAssessmentRequest(nextPhase, history, industry, aiManagerInstance);
         } else {
           // If no more phases, consider assessment complete
           console.warn(`>>> BACKEND: AI generated repeated questions in the last phase. Marking assessment as completed.`);
@@ -1052,7 +1143,7 @@ Return JSON: {
     return NextResponse.json({
       ...parsedResponse,
       currentPhaseName,
-      providerUsed: aiManager.getCurrentProvider().name
+      providerUsed: 'OpenAI' // Questions are always from OpenAI
     });
 
   } catch (error: any) {

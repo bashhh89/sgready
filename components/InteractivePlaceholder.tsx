@@ -1,15 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
 
-interface InteractivePlaceholderProps {
-  placeholderKey: string;
+interface EditableVariableProps {
+  variableKey: string;
   value: string;
   guidance: string;
   examples: string[];
   onUpdate: (value: string) => void;
 }
 
-const InteractivePlaceholder: React.FC<InteractivePlaceholderProps> = ({
-  placeholderKey,
+const EditableVariable: React.FC<EditableVariableProps> = ({
+  variableKey,
   value,
   guidance,
   examples,
@@ -43,9 +43,9 @@ const InteractivePlaceholder: React.FC<InteractivePlaceholderProps> = ({
         onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Edit ${placeholderKey}`}
+        aria-label={`Edit ${variableKey}`}
       >
-        {value ? <span className="font-bold">{value}</span> : `{{${placeholderKey}}}`}
+        {value ? <span className="font-bold">{value}</span> : `{{${variableKey}}}`}
       </button>
       {open && (
         <div
@@ -55,7 +55,7 @@ const InteractivePlaceholder: React.FC<InteractivePlaceholderProps> = ({
           role="dialog"
           aria-modal="true"
         >
-          <div className="mb-2 text-sg-dark-teal font-bold text-base">{placeholderKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
+          <div className="mb-2 text-sg-dark-teal font-bold text-base">{variableKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>
           <div className="mb-2 text-gray-700 text-sm">{guidance}</div>
           <div className="mb-2 text-xs text-gray-500">
             <span className="font-semibold">Examples:</span>
@@ -70,7 +70,7 @@ const InteractivePlaceholder: React.FC<InteractivePlaceholderProps> = ({
             type="text"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
-            placeholder={placeholderKey.replace(/_/g, ' ')}
+            placeholder={variableKey.replace(/_/g, ' ')}
             autoFocus
             onKeyDown={e => { if (e.key === 'Enter') { onUpdate(inputValue); setOpen(false); } }}
           />
@@ -92,4 +92,4 @@ const InteractivePlaceholder: React.FC<InteractivePlaceholderProps> = ({
   );
 };
 
-export default InteractivePlaceholder; 
+export default EditableVariable; 

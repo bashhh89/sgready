@@ -4,12 +4,11 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { generateScorecardHTMLv5 } from '../../../lib/html-generation/scorecard-html-v5';
 
-// PDFShift API key
-// TODO: Move this to an environment variable for production
-const PDFSHIFT_API_KEY = 'sk_7535f98775735827433811d3932c7489ac27ec72';
+// PDFShift API key from environment variables
+const PDFSHIFT_API_KEY = process.env.PDFSHIFT_API_KEY || '';
 
-// Mock data for initial implementation
-// TODO: Fetch this data dynamically based on reportId from request parameters
+// Test data for development and debugging purposes
+// This will be replaced with actual data from Firestore in production
 const SCORECARD_DEBUG_DATA = {
   UserInformation: { 
     Industry: "Property/Real Estate", 
@@ -250,6 +249,15 @@ export async function GET(request: NextRequest) {
     // Generate HTML content
     console.log('Generating HTML content for PDFShift conversion');
     const htmlString = generateScorecardHTMLv5(SCORECARD_DEBUG_DATA);
+
+    // Get the host from the request headers
+    const host = request.headers.get('host') || 'localhost:3006';
+    // Determine the protocol (use https if not localhost)
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    // Construct the base URL
+    const baseUrl = `${protocol}://${host}`;
+    
+    console.log(`Using base URL: ${baseUrl} for PDFShift conversion`);
 
     // Call PDFShift API
     console.log('Calling PDFShift API');
