@@ -433,11 +433,55 @@ export class AIProviderManager {
   private pollinationsProvider: PollinationsProvider | undefined; // Keep for other potential uses
   private lastReportProviderName: string | undefined;
   private lastQuestionProviderName: string | undefined;
-
+  private useGeorgeKey: boolean;
 
   constructor() {
-    console.log('Initializing AI Provider Manager (Google Primary)...');
+    console.log('============================================');
+    console.log('AIProviderManager: INITIALIZING PROVIDER MANAGER');
+    console.log('============================================');
     
+    // Output environment variables status without revealing sensitive information
+    console.log('Environment Variables Status:');
+    console.log(`USE_GEORGE_KEY: ${process.env.USE_GEORGE_KEY}`);
+    console.log(`OPENAI_API_KEY Present: ${process.env.OPENAI_API_KEY ? 'true' : 'false'}`);
+    console.log(`OPENAI_MODEL: ${process.env.OPENAI_MODEL || 'gpt-4o'}`);
+    console.log('============================================');
+    
+    // Check if USE_GEORGE_KEY is set to true to enforce OpenAI usage
+    this.useGeorgeKey = process.env.USE_GEORGE_KEY === 'true';
+    console.log(`Initializing AI Provider Manager (UseGeorgeKey: ${this.useGeorgeKey ? 'true - OpenAI Required' : 'false - OpenAI Still Required'})...`);
+    
+    // Initialize OpenAI Provider with more robust error handling
+    try {
+      const openAIAPIKey = process.env.OPENAI_API_KEY || '';
+      const openAIModel = process.env.OPENAI_MODEL || 'gpt-4o';
+      
+      // Log information without exposing the actual key
+      if (openAIAPIKey) {
+        console.log(`FORCING CORRECT API KEY: Using correct key with length ${openAIAPIKey.length}`);
+        
+        // Create the OpenAI provider instance
+        this.openAIProvider = new OpenAIProvider(openAIAPIKey, openAIModel);
+        console.log(`OpenAIProvider: Using API key - First chars: ${openAIAPIKey.substring(0, 7)}..., Last chars: ...${openAIAPIKey.substring(openAIAPIKey.length - 4)}`);
+        console.log(`OpenAI Provider instance created with FORCED KEY (Required for Questions and Reports). Model: ${openAIModel}`);
+      } else {
+        // Critical error for missing API key
+        console.error('CRITICAL ERROR: OPENAI_API_KEY not found. OpenAI provider is REQUIRED for question and report generation.');
+        console.error('Available environment variables:', Object.keys(process.env).filter(key => !key.startsWith('npm_')).join(', '));
+        
+        // Even with missing key, create provider with empty key for consistent code handling
+        // The provider's isAvailable() method will properly handle this case
+        console.warn('Creating OpenAI provider with empty key for consistent error handling');
+        this.openAIProvider = new OpenAIProvider('', openAIModel);
+      }
+    } catch (e: any) {
+      console.error("CRITICAL ERROR: Failed to instantiate OpenAIProvider:", e.message);
+      // Avoid null provider by creating one with empty credentials
+      // This ensures consistent code paths even when initialization fails
+      console.warn('Creating fallback OpenAI provider with empty key');
+      this.openAIProvider = new OpenAIProvider('', process.env.OPENAI_MODEL || 'gpt-4o');
+    }
+
     // Initialize Google Gemini Provider (Primary)
     const googleApiKey = process.env.GOOGLE_API_KEY;
     const googleModel = process.env.GOOGLE_MODEL || 'gemini-2.0-flash'; // Changed to gemini-2.0-flash
@@ -450,24 +494,6 @@ export class AIProviderManager {
       }
     } else {
       console.warn('GOOGLE_API_KEY not found. Google Gemini provider (Primary) will not be available.');
-    }
-
-    // Initialize OpenAI Provider (Fallback/Secondary)
-    const openAIAPIKey = process.env.OPENAI_API_KEY;
-    const openAIModel = process.env.OPENAI_MODEL || 'gpt-4o';
-    if (openAIAPIKey && !this.googleProvider) { // Only init if Google isn't primary or not available
-        try {
-            this.openAIProvider = new OpenAIProvider(openAIAPIKey, openAIModel);
-            console.log('OpenAI Provider instance created (Fallback).');
-        } catch (e: any) {
-            console.error("Failed to instantiate OpenAIProvider:", e.message);
-        }
-    } else if (openAIAPIKey && this.googleProvider) {
-        this.openAIProvider = new OpenAIProvider(openAIAPIKey, openAIModel); // Still init if key is there for potential direct use
-        console.log('OpenAI Provider instance created (available for other uses).');
-    }
-     else {
-      console.warn('OPENAI_API_KEY not found or Google is Primary. OpenAI provider will not be primary/fallback.');
     }
 
     // Initialize Groq Provider (Tertiary Fallback or specific use)

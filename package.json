@@ -4,11 +4,15 @@
   "private": true,
   "scripts": {
     "predev": "npx kill-port 3006",
-    "dev": "next dev -p 3006",
+    "dev": "cross-env next dev -p 3006",
+    "dev:windows": "powershell -Command \"next dev -p 3006\"",
     "build": "node build-production.js",
-    "start": "next start",
+    "start": "next start -p 3006",
     "lint": "next lint",
-    "test-pdf": "node test-pdf-generation.js"
+    "test-pdf": "node test-pdf-generation.js",
+    "verify": "node verify-deploy-readiness.js",
+    "deploy:prepare": "pnpm install --frozen-lockfile=false && pnpm run build && pnpm run verify",
+    "deploy:pm2": "setup-pm2-production.bat"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "6.7.2",
@@ -44,6 +48,8 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "autoprefixer": "^10.4.0",
+    "cross-env": "7.0.3",
+    "dotenv": "16.5.0",
     "eslint": "^8.0.0",
     "eslint-config-next": "^14.0.0",
     "node-fetch": "^2.7.0",
